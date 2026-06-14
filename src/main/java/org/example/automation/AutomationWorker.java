@@ -119,25 +119,30 @@ public class AutomationWorker implements Runnable {
                 notifyUI("▶️ Vòng " + currentLoop + ": Khởi chạy", false, true);
                 System.out.println("🚀 [" + deviceId + "] ====== BẮT ĐẦU VÒNG LẶP ĐĂNG VIDEO THỨ " + currentLoop + " ======");
 
+                // ... (Logic quét database lấy targetVideo như cũ ở phía trên)
+
                 String currentVideoName = targetVideo.getName();
                 DatabaseManager.updateVideoStatus(currentVideoName, deviceId, "PROCESSING");
 
                 // =========================================================================
-                // BƯỚC 3 (TỐI ƯU): KIỂM TRA FILE TRÊN PHONE TRƯỚC KHI PUSH (CHỐNG TRÙNG VÀ GIẢM TẢI CÁP)
+                // THỰC THI BĂM HASH: Biến đổi video trên PC thành bản sao độc nhất cho máy này
                 // =========================================================================
+                File processedVideo = alterVideoHash(targetVideo);
+
                 notifyUI("📤 Vòng " + currentLoop + ": Kiểm tra video", false, true);
                 String remotePath = "/sdcard/Download/" + currentVideoName;
 
-                // Trạng thái kiểm tra xem file đã có trên Phone hay chưa
                 boolean fileExistsOnPhone = checkFileExistsOnDevice(remotePath);
 
                 if (fileExistsOnPhone) {
                     System.out.println("⏭️ [" + deviceId + "] File '" + currentVideoName + "' đã có sẵn trên Phone. Bỏ qua bước Push!");
                     notifyUI("⏭️ Vòng " + currentLoop + ": File có sẵn", false, true);
                 } else {
-                    System.out.println("📤 [" + deviceId + "] File chưa có trên Phone. Tiến hành đẩy file sang...");
+                    System.out.println("📤 [" + deviceId + "] Tiến hành đẩy file đã băm cấu trúc sang Phone...");
                     notifyUI("📤 Vòng " + currentLoop + ": Đang Push file", false, true);
-                    executeADBCommand("push", targetVideo.getAbsolutePath(), remotePath);
+
+                    // LƯU Ý: Sửa từ targetVideo.getAbsolutePath() THÀNH processedVideo.getAbsolutePath()
+                    executeADBCommand("push", processedVideo.getAbsolutePath(), remotePath);
                     Thread.sleep(1000);
                 }
 
@@ -237,4 +242,40 @@ public class AutomationWorker implements Runnable {
         return false;
     }
 
+    /**
+     * Cơ chế tối mật: Tạo file video tạm độc nhất cho từng máy và thay đổi Byte cuối file (Băm mã Hash MD5)
+     * Giúp lách 100% thuật toán quét nội dung trùng lặp của Shopee
+     */
+    private File alterVideoHash(File originalVideo) {
+        // Tạo một thư mục tạm trên PC để chứa các video đã được băm hash riêng cho từng máy
+        File tempFolder = new File("C:\\FarmVideos\\Temp_" + deviceId + "\\");
+        if (!tempFolder.exists()) tempFolder.mkdirs();
+
+        // Tên file tạm sẽ đi liền với ID của máy để không bị đè lên nhau giữa các luồng
+        File uniqueVideoFile = new File(tempFolder, originalVideo.getName());
+
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(originalVideo);
+             java.io.FileOutputStream fos = new java.io.FileOutputStream(uniqueVideoFile)) {
+
+            // 1. Sao chép nguyên vẹn dữ liệu từ video gốc sang file tạm
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+
+            // 2. BƯỚC QUYẾT ĐỊNH: Ghi đè thêm vài byte ngẫu nhiên vào cuối file (End of File)
+            // Việc này làm thay đổi cấu trúc mã Hash MD5/SHA-256 gốc của file mà không làm hỏng định dạng MP4
+            java.util.Random rand = new java.util.Random();
+            byte[] junkBytes = new byte[rand.nextInt(10) + 5]; // Tạo ngẫu nhiên từ 5 đến 15 byte rác
+            rand.nextBytes(junkBytes);
+            fos.write(junkBytes); // Bơm byte rác vào cuối file
+
+            System.out.println("🧬 [" + deviceId + "] Đã băm cấu trúc mã Hash thành công cho file: " + originalVideo.getName());
+        } catch (Exception e) {
+            System.out.println("⚠️ Lỗi băm Hash Video, sử dụng file gốc phòng hờ: " + e.getMessage());
+            return originalVideo; // Nếu lỗi thì trả về file gốc để không bị gián đoạn luồng Farm
+        }
+        return uniqueVideoFile;
+    }
 }

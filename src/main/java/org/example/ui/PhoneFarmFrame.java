@@ -1,6 +1,7 @@
 package org.example.ui;
 
 import org.example.core.DeviceMonitor;
+import org.example.core.DatabaseManager; // Thêm thư viện gọi DB
 
 import javax.swing.*;
 import java.awt.*;
@@ -8,60 +9,96 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.File;
 
 public class PhoneFarmFrame extends JFrame {
     private final JPanel gridPanel;
     private final JLabel lblTotalPhones;
+    private final JTextField txtVideoFolder;
+    private final JButton btnBrowse;
+    private final JButton btnResetDB;
+    private final JCheckBox chkSelectAll;
     private final Map<String, PhoneCard> activeCardsMap = new HashMap<>();
 
     private ExecutorService farmThreadPool;
-    private static final String CSV_URL = "https://google.com";
-
-    // Khai báo biến các nút để quản lý bật/tắt trạng thái hiển thị
     private final JButton btnStartAll;
     private final JButton btnStopAll;
 
     public PhoneFarmFrame() {
-        setTitle("HỆ THỐNG QUẢN LÝ PHONE FARM TRỰC DIỆN - THUẦN JAVA");
-        setSize(1100, 750);
+        setTitle("HỆ THỐNG QUẢN LÝ PHONE FARM");
+        setSize(1200, 750); // Nhích rộng giao diện ra một chút để chứa nút mới gọn gàng
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        JPanel topPanel = new JPanel(new BorderLayout(15, 10));
+        // 🛠️ THANH CÔNG CỤ PHÍA TRÊN (TOP BAR CẢI TIẾN)
+        JPanel topPanel = new JPanel(new GridBagLayout());
         topPanel.setBackground(new Color(230, 235, 240));
         topPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.LIGHT_GRAY));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(8, 10, 8, 10);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        lblTotalPhones = new JLabel("⚡ Thiết bị đang kết nối: 0");
-        lblTotalPhones.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        topPanel.add(lblTotalPhones, BorderLayout.WEST);
+        // Cột 1: Số máy đang kết nối
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.12;
+        lblTotalPhones = new JLabel("⚡ Thiết bị: 0");
+        lblTotalPhones.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        topPanel.add(lblTotalPhones, gbc);
 
-        JPanel controlGroupPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        controlGroupPanel.setOpaque(false);
+        // Cột 2: Checkbox Chọn nhanh tất cả máy
+        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.08;
+        chkSelectAll = new JCheckBox("Chọn hết");
+        chkSelectAll.setSelected(true);
+        chkSelectAll.setOpaque(false);
+        chkSelectAll.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        topPanel.add(chkSelectAll, gbc);
 
-        // Khởi tạo các nút điều phối tổng
+        // Cột 3: Bộ chọn thư mục Video Input
+        gbc.gridx = 2; gbc.gridy = 0; gbc.weightx = 0.45;
+        JPanel folderPanel = new JPanel(new BorderLayout(5, 0));
+        folderPanel.setOpaque(false);
+        folderPanel.add(new JLabel("📂 Folder: "), BorderLayout.WEST);
+
+        txtVideoFolder = new JTextField("C:\\FarmVideos");
+        txtVideoFolder.setEditable(false);
+        btnBrowse = new JButton("Duyệt...");
+        btnBrowse.setForeground(Color.BLACK); // Đồng bộ chữ đen dễ nhìn
+
+        folderPanel.add(txtVideoFolder, BorderLayout.CENTER);
+        folderPanel.add(btnBrowse, BorderLayout.EAST);
+        topPanel.add(folderPanel, gbc);
+
+        // Cột 4: Nút Reset DB chủ động (THÊM MỚI)
+        gbc.gridx = 3; gbc.gridy = 0; gbc.weightx = 0.1;
+        btnResetDB = new JButton("🔄 Reset DB");
+        btnResetDB.setBackground(new Color(255, 193, 7)); // Màu vàng cảnh báo trực quan
+        btnResetDB.setForeground(Color.BLACK); // Đổi chữ đen rõ ràng
+        btnResetDB.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        btnResetDB.setFocusPainted(false);
+        topPanel.add(btnResetDB, gbc);
+
+        // Cột 5: Cặp nút điều phối tổng hàng loạt chữ đen
+        gbc.gridx = 4; gbc.gridy = 0; gbc.weightx = 0.25;
+        JPanel batchButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        batchButtonsPanel.setOpaque(false);
+
         btnStartAll = new JButton("🚀 START ALL CHOSEN");
         btnStartAll.setBackground(new Color(40, 167, 69));
-        btnStartAll.setForeground(Color.WHITE);
+        btnStartAll.setForeground(Color.BLACK); // ĐỔI SANG CHỮ ĐEN DỄ NHÌN
         btnStartAll.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnStartAll.setFocusPainted(false);
 
         btnStopAll = new JButton("🛑 STOP ALL CHOSEN");
         btnStopAll.setBackground(new Color(220, 53, 69));
-        btnStopAll.setForeground(Color.WHITE);
+        btnStopAll.setForeground(Color.BLACK); // ĐỔI SANG CHỮ ĐEN DỄ NHÌN
         btnStopAll.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnStopAll.setFocusPainted(false);
 
-        controlGroupPanel.add(btnStartAll);
-        controlGroupPanel.add(btnStopAll);
-        topPanel.add(controlGroupPanel, BorderLayout.EAST);
+        batchButtonsPanel.add(btnStartAll);
+        batchButtonsPanel.add(btnStopAll);
+        topPanel.add(batchButtonsPanel, gbc);
 
         add(topPanel, BorderLayout.NORTH);
 
@@ -72,17 +109,55 @@ public class PhoneFarmFrame extends JFrame {
         JScrollPane scrollPane = new JScrollPane(gridPanel);
         add(scrollPane, BorderLayout.CENTER);
 
-        btnStartAll.addActionListener(e -> triggerStartAllChosen());
-        btnStopAll.addActionListener(e -> triggerStopAllChosen());
+        initEvents();
 
         DeviceMonitor monitor = new DeviceMonitor(this::syncDevicesToUI);
         monitor.start();
     }
 
+    private void initEvents() {
+        btnBrowse.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setCurrentDirectory(new File(txtVideoFolder.getText()));
+            int result = chooser.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedFolder = chooser.getSelectedFile();
+                txtVideoFolder.setText(selectedFolder.getAbsolutePath());
+            }
+        });
+
+        // HỘP THOẠI CONFIRM RESET DATABASE CHỦ ĐỘNG (THÊM MỚI)
+        btnResetDB.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Bạn có chắc chắn muốn XÓA LỊCH SỬ ĐĂNG VIDEO không?\nHành động này sẽ đặt lại toàn bộ trạng thái về PENDING để chạy lại từ đầu.",
+                    "⚠️ Xác nhận Reset Database",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                DatabaseManager.resetAllVideoStatus();
+                JOptionPane.showMessageDialog(this, "🔄 Đã dọn dẹp sạch lịch sử SQLite! Toàn bộ video đã sẵn sàng chờ đăng mới.");
+            }
+        });
+
+        chkSelectAll.addActionListener(e -> {
+            boolean status = chkSelectAll.isSelected();
+            for (PhoneCard card : activeCardsMap.values()) {
+                card.setSelected(status);
+            }
+        });
+
+        btnStartAll.addActionListener(e -> triggerStartAllChosen());
+        btnStopAll.addActionListener(e -> triggerStopAllChosen());
+    }
+
     private void triggerStartAllChosen() {
         List<PhoneCard> chosenCards = new ArrayList<>();
         for (PhoneCard card : activeCardsMap.values()) {
-            if (card.isSelected() && !card.isWorking()) { // Chỉ chạy máy được tích chọn và CHƯA LÀM VIỆC
+            if (card.isSelected() && !card.isWorking()) {
                 chosenCards.add(card);
             }
         }
@@ -92,10 +167,16 @@ public class PhoneFarmFrame extends JFrame {
             return;
         }
 
-        // CẢI TIẾN: Khóa ngay nút bấm Start All để chống nhấn đúp gây kích hoạt lỗi trùng luồng
-        btnStartAll.setEnabled(false);
+        String selectedFolderPath = txtVideoFolder.getText().trim();
+        File inputFolder = new File(selectedFolderPath);
+        if (!inputFolder.exists() || !inputFolder.isDirectory()) {
+            JOptionPane.showMessageDialog(this, "Thư mục nguồn chứa video không hợp lệ!", "Lỗi", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
 
-        Map<String, String[]> sheetDataMap = fetchGoogleSheetData();
+        btnStartAll.setEnabled(false);
+        btnBrowse.setEnabled(false);
+        btnResetDB.setEnabled(false); // Khóa luôn nút reset khi đang chạy để an toàn dữ liệu
 
         if (farmThreadPool != null && !farmThreadPool.isShutdown()) {
             farmThreadPool.shutdownNow();
@@ -106,15 +187,7 @@ public class PhoneFarmFrame extends JFrame {
 
         for (PhoneCard card : chosenCards) {
             farmThreadPool.execute(() -> {
-                String mockTitle = "Sản phẩm Hot cho máy " + card.getDeviceId();
-                String mockDesc = "#shopee #automation";
-
-                if (sheetDataMap.containsKey(card.getDeviceId())) {
-                    mockTitle = sheetDataMap.get(card.getDeviceId())[0];
-                    mockDesc = sheetDataMap.get(card.getDeviceId())[1];
-                }
-
-                card.startAutomate(mockTitle, mockDesc);
+                card.startAutomateWithFolder(selectedFolderPath);
             });
         }
     }
@@ -128,39 +201,15 @@ public class PhoneFarmFrame extends JFrame {
                 card.stopAutomate();
             }
         }
-
-        // CẢI TIẾN: Mở khóa nút Start All khi người dùng chủ động click nút dừng khẩn cấp
         btnStartAll.setEnabled(true);
-        System.out.println("🛑 Hệ thống đã dừng đồng loạt và giải phóng khóa giao diện điều khiển.");
-    }
-
-    private Map<String, String[]> fetchGoogleSheetData() {
-        Map<String, String[]> dataMap = new HashMap<>();
-        try {
-            URL url = new URL(CSV_URL);
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream(), "UTF-8"))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    String[] columns = line.split(",");
-                    if (columns.length >= 3) {
-                        String deviceIdKey = columns[0].trim();
-                        String titleVal = columns[1].trim();
-                        String descVal = columns[2].trim();
-                        dataMap.put(deviceIdKey, new String[]{titleVal, descVal});
-                    }
-                }
-            }
-            System.out.println("📊 [Google Sheet] Đã đồng bộ dữ liệu CSV thành công!");
-        } catch (Exception e) {
-            System.out.println("⚠️ Cấu hình Google Sheet sử dụng Data MOCK: " + e.getMessage());
-        }
-        return dataMap;
+        btnBrowse.setEnabled(true);
+        btnResetDB.setEnabled(true); // Mở khóa nút reset
+        System.out.println("🛑 Hệ thống đã dừng đồng loạt và giải phóng khóa giao diện.");
     }
 
     private void syncDevicesToUI(List<String> connectedIDs) {
         SwingUtilities.invokeLater(() -> {
             boolean isChanged = false;
-
             for (String id : connectedIDs) {
                 if (!activeCardsMap.containsKey(id)) {
                     PhoneCard card = new PhoneCard(id);
@@ -169,7 +218,6 @@ public class PhoneFarmFrame extends JFrame {
                     isChanged = true;
                 }
             }
-
             List<String> removedIDs = new ArrayList<>();
             for (String activeId : activeCardsMap.keySet()) {
                 if (!connectedIDs.contains(activeId)) {
@@ -182,9 +230,8 @@ public class PhoneFarmFrame extends JFrame {
                 gridPanel.remove(cardToRemove);
                 isChanged = true;
             }
-
             if (isChanged) {
-                lblTotalPhones.setText("⚡ Thiết bị đang kết nối: " + activeCardsMap.size());
+                lblTotalPhones.setText("⚡ Thiết bị: " + activeCardsMap.size());
                 gridPanel.revalidate();
                 gridPanel.repaint();
             }

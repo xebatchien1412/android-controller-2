@@ -4,7 +4,6 @@ import org.example.automation.AutomationWorker;
 
 import javax.swing.*;
 import java.awt.*;
-
 import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
 import java.io.InputStream;
@@ -22,7 +21,7 @@ public class PhoneCard extends JPanel {
     private final JPanel renderPanel;
     private volatile boolean isStreaming = true;
 
-    // CẢI TIẾN: Biến trạng thái chặn việc tạo trùng luồng
+    // Trạng thái chặn việc tạo trùng luồng
     private volatile boolean isWorking = false;
 
     public PhoneCard(String deviceId) {
@@ -75,10 +74,12 @@ public class PhoneCard extends JPanel {
         JPanel buttonsPanel = new JPanel(new GridLayout(1, 2, 5, 0));
         btnStart = new JButton("Start");
         btnStart.setBackground(new Color(40, 167, 69));
-        btnStart.setForeground(Color.WHITE);
+        btnStart.setForeground(Color.BLACK); // ĐỔI SANG MÀU ĐEN
         btnStart.setFocusPainted(false);
 
         btnPause = new JButton("Stop");
+        btnPause.setBackground(new Color(220, 53, 69)); // Thêm màu đỏ cho đồng bộ nút tổng nếu chưa có
+        btnPause.setForeground(Color.BLACK); // ĐỔI SANG MÀU ĐEN
         btnPause.setEnabled(false);
         btnPause.setFocusPainted(false);
 
@@ -93,15 +94,22 @@ public class PhoneCard extends JPanel {
         startPureJavaStream();
     }
 
-    public void startAutomate(String title, String desc) {
-        // CẢI TIẾN: Nếu đang chạy kịch bản thì chặn đứng hoàn toàn, không cho tạo thêm Thread mới
+    /**
+     * HÀM CHUẨN HOÁ: Khởi tạo Worker và truyền thẳng đường dẫn folder do User chỉ định từ UI vào.
+     * Được gọi đồng bộ từ nút tổng START ALL CHOSEN trên PhoneFarmFrame.
+     */
+    public void startAutomateWithFolder(String customFolderPath) {
         if (isWorking) {
-            System.out.println("⚠️ Thiết bị [" + deviceId + "] đang làm việc. Bỏ qua yêu cầu kích hoạt trùng lặp.");
+            System.out.println("⚠️ Thiết bị [" + deviceId + "] đang làm việc. Bỏ qua yêu cầu.");
             return;
         }
 
+        // Phòng hờ nếu đường dẫn truyền vào lỗi hoặc null, gán thư mục mặc định để tránh crash luồng
+        String finalPath = (customFolderPath == null || customFolderPath.trim().isEmpty())
+                ? "C:\\FarmVideos" : customFolderPath;
+
         isWorking = true;
-        worker = new AutomationWorker(deviceId, title, desc, this::updateButtonStates);
+        worker = new AutomationWorker(deviceId, finalPath, this::updateButtonStates);
         new Thread(worker).start();
     }
 
@@ -114,6 +122,12 @@ public class PhoneCard extends JPanel {
 
     public boolean isSelected() {
         return chkSelect.isSelected();
+    }
+
+    public void setSelected(boolean selected) {
+        SwingUtilities.invokeLater(() -> {
+            chkSelect.setSelected(selected);
+        });
     }
 
     public boolean isWorking() {
@@ -159,7 +173,10 @@ public class PhoneCard extends JPanel {
     }
 
     private void initEvents() {
-        btnStart.addActionListener(e -> startAutomate(null, null));
+        // SỬA ĐỒNG BỘ: Gọi đúng hàm startAutomateWithFolder và truyền null để hệ thống tự bốc folder mặc định
+        btnStart.addActionListener(e -> startAutomateWithFolder(null));
+
+        // Nút Stop gọi chính xác hàm stopAutomate() không tham số
         btnPause.addActionListener(e -> stopAutomate());
     }
 

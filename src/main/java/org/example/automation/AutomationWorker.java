@@ -1,7 +1,7 @@
 package org.example.automation;
 
 import org.example.core.DatabaseManager;
-import org.example.core.ADBCommand; // Import lớp ADB nâng cấp
+import org.example.core.ADBCommand;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -23,8 +23,6 @@ public class AutomationWorker implements Runnable {
 
     private volatile boolean running = true;
     private static final int MAX_VIDEOS_PER_DAY = 90;
-    private static final int MIN_DELAY_SECONDS = 5;
-    private static final int MAX_DELAY_SECONDS = 30;
 
     public interface OnStatusUpdateListener {
         void onUpdate(String status, boolean startEnabled, boolean stopEnabled);
@@ -43,7 +41,6 @@ public class AutomationWorker implements Runnable {
     }
 
     private void executeADBCommand(String... commands) {
-        // Chuyển hướng xử lý qua hàm tập trung của ADBCommand để tối ưu tài nguyên
         ADBCommand.executeADB(deviceId, commands);
     }
 
@@ -80,26 +77,36 @@ public class AutomationWorker implements Runnable {
     }
 
     private File alterVideoHash(File originalVideo) {
-        File tempFolder = new File("C:\\FarmVideos\\Temp_" + deviceId + "\\");
-        if (!tempFolder.exists()) tempFolder.mkdirs();
-        File uniqueVideoFile = new File(tempFolder, originalVideo.getName());
+        try {
+            // 1. Đẩy thẳng vào thư mục Temp của hệ thống Windows (C:\Users\...\AppData\Local\Temp)
+            // Thư mục chạy tool của bạn sẽ sạch sẽ 100%, không bị đẻ folder rác bừa bãi
+            File tempDir = new File(System.getProperty("java.io.tmpdir"), "Shopee_Farm_Temp_" + deviceId);
+            if (!tempDir.exists()) tempDir.mkdirs();
 
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(originalVideo);
-             java.io.FileOutputStream fos = new java.io.FileOutputStream(uniqueVideoFile)) {
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+            File uniqueVideoFile = new File(tempDir, originalVideo.getName());
+
+            // 2. Bảo hiểm nâng cao: Tự động xóa file này ngay khi ứng dụng/JVM tắt
+            // (Phòng hờ trường hợp luồng chính bị crash bất ngờ không kịp chạy lệnh xóa)
+            uniqueVideoFile.deleteOnExit();
+
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(originalVideo);
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(uniqueVideoFile)) {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
+                Random rand = new Random();
+                byte[] junkBytes = new byte[rand.nextInt(10) + 5];
+                rand.nextBytes(junkBytes);
+                fos.write(junkBytes);
+                System.out.println("🧬 [" + deviceId + "] Đã băm cấu trúc mã Hash xong cho: " + originalVideo.getName());
             }
-            Random rand = new Random();
-            byte[] junkBytes = new byte[rand.nextInt(10) + 5];
-            rand.nextBytes(junkBytes);
-            fos.write(junkBytes);
-            System.out.println("🧬 [" + deviceId + "] Đã băm cấu trúc mã Hash xong cho: " + originalVideo.getName());
+            return uniqueVideoFile;
         } catch (Exception e) {
+            System.out.println("⚠️ Lỗi băm Hash, dùng file gốc: " + e.getMessage());
             return originalVideo;
         }
-        return uniqueVideoFile;
     }
 
     private boolean checkFileExistsOnDevice(String remotePath) {
@@ -116,24 +123,10 @@ public class AutomationWorker implements Runnable {
     @Override
     public void run() {
         try {
+            // [TÍNH NĂNG NÂNG CAO]: Thực thi chuẩn bị môi trường máy bộc phá ngay lập tức khi bấm Start
             ADBCommand.installADBKeyboardIfMissing(deviceId);
-            // [TÍNH NĂNG NÂNG CAO]: Bảo vệ phần cứng và chuẩn bị bộ gõ khi bắt đầu luồng
-            ADBCommand.optimizeHardwareScreen(deviceId, true); // Hạ độ sáng màn hình về 0%
-            ADBCommand.enableADBKeyboard(deviceId);            // Bật bộ gõ ADB Tiếng Việt
-
-            // Khởi động cơ chế Random Sleep để chống quét Farm tập trung
-            if (running) {
-                Random random = new Random();
-                int randomDelay = random.nextInt((MAX_DELAY_SECONDS - MIN_DELAY_SECONDS) + 1) + MIN_DELAY_SECONDS;
-                notifyUI("⏳ Chờ ngẫu nhiên " + randomDelay + "s", false, true);
-                System.out.println("⏳ [" + deviceId + "] Chống quét Spam. Ngủ ngẫu nhiên " + randomDelay + " giây...");
-                try {
-                    Thread.sleep(randomDelay * 1000L);
-                } catch (InterruptedException e) {
-                    System.out.println("❌ [" + deviceId + "] Luồng bị ngắt khi đang ngủ ngẫu nhiên.");
-                    return;
-                }
-            }
+            ADBCommand.optimizeHardwareScreen(deviceId, true);
+            ADBCommand.enableADBKeyboard(deviceId);
 
             int uploadCount = 0;
 
@@ -158,17 +151,21 @@ public class AutomationWorker implements Runnable {
 
                     for (File subFolder : subFolders) {
                         File[] mp4Files = subFolder.listFiles((dir, name) -> name.toLowerCase().endsWith(".mp4"));
-                        File[] txtFiles = subFolder.listFiles((dir, name) -> name.toLowerCase().equals("metadata.txt"));
+                        File[] txtFiles = subFolder.listFiles((dir, name) -> name.toLowerCase().endsWith("metadata.txt"));
 
                         if (mp4Files != null && mp4Files.length > 0 && txtFiles != null && txtFiles.length > 0) {
                             File videoFile = mp4Files[0];
-                            String status = DatabaseManager.checkVideoStatusForDevice(videoFile.getName(), deviceId);
+                            currentPackName = subFolder.getName(); // Lấy tên thư mục con làm định danh (Ví dụ: Alexander Ferros 5052S)
+
+                            // Kiểm tra trạng thái trong DB bằng TÊN PACK thay vì tên file video.mp4 trùng lặp
+                            String status = DatabaseManager.checkVideoStatusForDevice(currentPackName, deviceId);
 
                             if ("PENDING".equals(status) || "NOT_EXISTS".equals(status)) {
                                 targetVideoFile = videoFile;
                                 targetMetadataFile = txtFiles[0];
-                                currentPackName = subFolder.getName();
-                                DatabaseManager.insertVideoIfNotExist(videoFile.getName(), deviceId);
+
+                                // Đăng ký tên Pack vào database để cô lập luồng
+                                DatabaseManager.insertVideoIfNotExist(currentPackName, deviceId);
                                 break;
                             }
                         }
@@ -187,7 +184,7 @@ public class AutomationWorker implements Runnable {
                     notifyUI("▶️ Vòng " + currentLoop + ": Đang chạy", false, true);
                     System.out.println("🚀 [" + deviceId + "] ====== BẮT ĐẦU VÒNG " + currentLoop + " [Pack: " + currentPackName + "] ======");
 
-                    DatabaseManager.updateVideoStatus(currentVideoName, deviceId, "PROCESSING");
+                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "PROCESSING");
 
                     File processedVideo = alterVideoHash(targetVideoFile);
 
@@ -198,7 +195,7 @@ public class AutomationWorker implements Runnable {
                         System.out.println("⏭️ [" + deviceId + "] File đã nằm sẵn trên Phone. Bỏ qua bước Push.");
                     } else {
                         System.out.println("📤 [" + deviceId + "] Đang push file video đã băm cấu trúc sang Phone...");
-                        executeADBCommand("push", processedVideo.getAbsolutePath(), remotePath);
+                        executeADBCommand("push", "\"" + processedVideo.getAbsolutePath() + "\"", remotePath);
                         Thread.sleep(1000);
                     }
 
@@ -244,7 +241,7 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Bấm Tiếp theo 1", false, true);
-                    executeADBCommand("shell", "input", "tap", "600", "1375");
+                    executeADBCommand("shell", "input", "tap", "610", "1440");
                     Thread.sleep(6000);
 
                     if (!running) break;
@@ -254,12 +251,13 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Thêm sản phẩm", false, true);
-                    executeADBCommand("shell", "input", "tap", "570", "330");
+                    executeADBCommand("shell", "input", "tap", "600", "530");
                     Thread.sleep(4000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Chọn dán link", false, true);
-                    executeADBCommand("shell", "input", "tap", "670", "80");
+                    // Tọa độ chuẩn đã hạ thấp xuống dưới thanh trạng thái Oppo: (665, 115)
+                    executeADBCommand("shell", "input", "tap", "665", "115");
                     Thread.sleep(4000);
 
                     if (!running) break;
@@ -314,15 +312,12 @@ public class AutomationWorker implements Runnable {
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Kích hoạt mô tả", false, true);
                     executeADBCommand("shell", "input", "tap", "550", "130");
-                    Thread.sleep(2500); // Tăng lên 2.5s để bàn phím ADBKeyboard nạp sẵn sàng
+                    Thread.sleep(2500);
 
-                    // =========================================================================
-                    // NÂNG CẤP BỘ GÕ TIẾNG VIỆT ĐỘC QUYỀN TRÁNH LỖI MẤT KÝ TỰ / CHẶN CLIPBOARD
-                    // =========================================================================
                     String finalDescriptionText = parseMetadata(targetMetadataFile);
                     System.out.println("🤖 [" + deviceId + "] Gửi văn bản Tiếng Việt có dấu trực tiếp qua ADBKeyboard...");
                     ADBCommand.sendVietnameseText(deviceId, finalDescriptionText);
-                    Thread.sleep(3000); // Chờ ký tự đổ vào ô text hoàn tất
+                    Thread.sleep(3000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Lưu mô tả", false, true);
@@ -333,9 +328,6 @@ public class AutomationWorker implements Runnable {
                     notifyUI("▶️ Vòng " + currentLoop + ": Tiến hành Đăng bài", false, true);
                     executeADBCommand("shell", "input", "tap", "580", "1430");
 
-                    // =========================================================================
-                    // CƠ CHẾ POLLING KIỂM TRA ACTIVITY ĐỘNG CẢI TIẾN (CHỊU TẢI THÔNG MINH)
-                    // =========================================================================
                     System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
 
                     boolean uploadFinished = false;
@@ -346,10 +338,9 @@ public class AutomationWorker implements Runnable {
                         notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
                         Thread.sleep(3000);
 
-                        // Gọi hàm Polling quét sâu
                         boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
                                 || checkCurrentActivityContains("PostVideoActivity")
-                                || checkCurrentActivityContains("sharing.ShareActivity"); // Thêm activity share ngầm của bản cập nhật
+                                || checkCurrentActivityContains("sharing.ShareActivity");
 
                         if (!isStillOnUploadScreen) {
                             System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
@@ -363,7 +354,7 @@ public class AutomationWorker implements Runnable {
                         executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
                     }
 
-                    DatabaseManager.updateVideoStatus(currentVideoName, deviceId, "SUCCESS");
+                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
                     System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
 
                     System.out.println("🗑️ [" + deviceId + "] Tiến hành xóa video tạm trên điện thoại...");
@@ -375,7 +366,6 @@ public class AutomationWorker implements Runnable {
                     }
                     Thread.sleep(1000);
 
-                    // KHỐI LỆNH BẢO DƯỠNG MÁY SAU MỖI 10 VÒNG ĐĂNG
                     if (currentLoop % 10 == 0) {
                         System.out.println("🧹 [" + deviceId + "] Hệ thống chạm mốc 10 video. Tiến hành dọn dẹp RAM và giải nhiệt cho Oppo...");
                         notifyUI("🧹 Vòng " + currentLoop + ": Đang bảo dưỡng máy", false, true);
@@ -401,13 +391,12 @@ public class AutomationWorker implements Runnable {
                 }
             }
         } finally {
-            // [AN TOÀN TUYỆT ĐỐI]: Luôn luôn trả lại màn hình và bàn phím gốc cho máy khi kết thúc hoặc lỗi luồng
             ADBCommand.resetDefaultKeyboard(deviceId);
             ADBCommand.optimizeHardwareScreen(deviceId, false);
 
             if (running) {
                 notifyUI("✅ Hoàn thành", true, false);
-                System.out.println("🎉 [" + deviceId + "] Chu kỳ làm việc kết thúc an toàn.");
+                System.out.println("🎉 [" + deviceId + "] Chu kỳ làm việc kết thoát an toàn.");
             }
         }
     }
@@ -415,7 +404,6 @@ public class AutomationWorker implements Runnable {
     public void stopWorker() {
         this.running = false;
         notifyUI("🛑 Đã dừng", true, false);
-        // Chạy bất đồng bộ việc dập app khi ấn Stop khẩn cấp
         new Thread(() -> {
             executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
             ADBCommand.resetDefaultKeyboard(deviceId);
@@ -423,9 +411,6 @@ public class AutomationWorker implements Runnable {
         }).start();
     }
 
-    /**
-     * Hàm Polling Quét Động Activity Đã Sửa Lại Tối Ưu Tận Dụng executeADB Tập Trung
-     */
     private boolean checkCurrentActivityContains(String activityName) {
         try {
             String dumpsysResult = ADBCommand.executeADB(deviceId, "shell", "dumpsys", "window", "displays");

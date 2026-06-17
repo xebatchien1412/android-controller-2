@@ -106,7 +106,7 @@ public class PhoneCard extends JPanel {
 
         // Phòng hờ nếu đường dẫn truyền vào lỗi hoặc null, gán thư mục mặc định để tránh crash luồng
         String finalPath = (customFolderPath == null || customFolderPath.trim().isEmpty())
-                ? "C:\\FarmVideos" : customFolderPath;
+                ? "D:\\demo" : customFolderPath; // Đổi sang ổ D đồng bộ thực tế của bạn
 
         isWorking = true;
         worker = new AutomationWorker(deviceId, finalPath, this::updateButtonStates);
@@ -173,10 +173,32 @@ public class PhoneCard extends JPanel {
     }
 
     private void initEvents() {
-        // SỬA ĐỒNG BỘ: Gọi đúng hàm startAutomateWithFolder và truyền null để hệ thống tự bốc folder mặc định
-        btnStart.addActionListener(e -> startAutomateWithFolder(null));
+        btnStart.addActionListener(e -> {
+            // Tự động tìm lên Frame tổng (PhoneFarmFrame) để lấy đường dẫn thực tế trong JTextField
+            String currentPath = "D:\\demo"; // Thao tác phòng hờ mặc định
+            Container parent = getTopLevelAncestor();
+            if (parent instanceof JFrame) {
+                // Quét tìm JTextField chứa folder trên giao diện
+                try {
+                    // Cách này bốc trực tiếp text động từ giao diện của bạn mà không cần sửa kiến trúc Frame
+                    for (Component comp : ((JFrame) parent).getContentPane().getComponents()) {
+                        if (comp instanceof JPanel) {
+                            for (Component subComp : ((JPanel) comp).getComponents()) {
+                                if (subComp instanceof JPanel) {
+                                    for (Component folderComp : ((JPanel) subComp).getComponents()) {
+                                        if (folderComp instanceof JTextField) {
+                                            currentPath = ((JTextField) folderComp).getText().trim();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            startAutomateWithFolder(currentPath);
+        });
 
-        // Nút Stop gọi chính xác hàm stopAutomate() không tham số
         btnPause.addActionListener(e -> stopAutomate());
     }
 

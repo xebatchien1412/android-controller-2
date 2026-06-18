@@ -1,7 +1,7 @@
 package org.example.ui;
 
 import org.example.core.DeviceMonitor;
-import org.example.core.DatabaseManager; // Thêm thư viện gọi DB
+import org.example.core.DatabaseManager;
 
 import javax.swing.*;
 import java.awt.*;
@@ -20,6 +20,8 @@ public class PhoneFarmFrame extends JFrame {
     private final JButton btnBrowse;
     private final JButton btnResetDB;
     private final JCheckBox chkSelectAll;
+
+    // ĐÂY LÀ CẤU TRÚC DỮ LIỆU THỰC TẾ CỦA BẠN
     private final Map<String, PhoneCard> activeCardsMap = new HashMap<>();
 
     private ExecutorService farmThreadPool;
@@ -28,12 +30,12 @@ public class PhoneFarmFrame extends JFrame {
 
     public PhoneFarmFrame() {
         setTitle("HỆ THỐNG QUẢN LÝ PHONE FARM");
-        setSize(1200, 750); // Nhích rộng giao diện ra một chút để chứa nút mới gọn gàng
+        setSize(1200, 750);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        // 🛠️ THANH CÔNG CỤ PHÍA TRÊN (TOP BAR CẢI TIẾN)
+        // 🛠️ THANH CÔNG CỤ PHÍA TRÊN (TOP BAR)
         JPanel topPanel = new JPanel(new GridBagLayout());
         topPanel.setBackground(new Color(230, 235, 240));
         topPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.LIGHT_GRAY));
@@ -41,13 +43,13 @@ public class PhoneFarmFrame extends JFrame {
         gbc.insets = new Insets(8, 10, 8, 10);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        // Cột 1: Số máy đang kết nối
+        // Cột 1: Số máy
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.12;
         lblTotalPhones = new JLabel("⚡ Thiết bị: 0");
         lblTotalPhones.setFont(new Font("Segoe UI", Font.BOLD, 13));
         topPanel.add(lblTotalPhones, gbc);
 
-        // Cột 2: Checkbox Chọn nhanh tất cả máy
+        // Cột 2: Chọn hết
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.08;
         chkSelectAll = new JCheckBox("Chọn hết");
         chkSelectAll.setSelected(true);
@@ -55,46 +57,49 @@ public class PhoneFarmFrame extends JFrame {
         chkSelectAll.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         topPanel.add(chkSelectAll, gbc);
 
-        // Cột 3: Bộ chọn thư mục Video Input
+        // Cột 3: Folder
         gbc.gridx = 2; gbc.gridy = 0; gbc.weightx = 0.45;
         JPanel folderPanel = new JPanel(new BorderLayout(5, 0));
         folderPanel.setOpaque(false);
         folderPanel.add(new JLabel("📂 Folder: "), BorderLayout.WEST);
 
-        txtVideoFolder = new JTextField("C:\\FarmVideos");
+        txtVideoFolder = new JTextField("D:\\demo"); // Đổi mặc định sang D:\demo cho đồng bộ các bước trước
         txtVideoFolder.setEditable(false);
         btnBrowse = new JButton("Duyệt...");
-        btnBrowse.setForeground(Color.BLACK); // Đồng bộ chữ đen dễ nhìn
+        btnBrowse.setForeground(Color.BLACK);
 
         folderPanel.add(txtVideoFolder, BorderLayout.CENTER);
         folderPanel.add(btnBrowse, BorderLayout.EAST);
         topPanel.add(folderPanel, gbc);
 
-        // Cột 4: Nút Reset DB chủ động (THÊM MỚI)
+        // Cột 4: Reset DB
         gbc.gridx = 3; gbc.gridy = 0; gbc.weightx = 0.1;
         btnResetDB = new JButton("🔄 Reset DB");
-        btnResetDB.setBackground(new Color(255, 193, 7)); // Màu vàng cảnh báo trực quan
-        btnResetDB.setForeground(Color.BLACK); // Đổi chữ đen rõ ràng
+        btnResetDB.setBackground(new Color(255, 193, 7));
+        btnResetDB.setForeground(Color.BLACK);
         btnResetDB.setFont(new Font("Segoe UI", Font.BOLD, 11));
         btnResetDB.setFocusPainted(false);
         topPanel.add(btnResetDB, gbc);
 
-        // Cột 5: Cặp nút điều phối tổng hàng loạt chữ đen
+        // Cột 5: Nút điều phối tổng
         gbc.gridx = 4; gbc.gridy = 0; gbc.weightx = 0.25;
         JPanel batchButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         batchButtonsPanel.setOpaque(false);
 
         btnStartAll = new JButton("🚀 START ALL CHOSEN");
         btnStartAll.setBackground(new Color(40, 167, 69));
-        btnStartAll.setForeground(Color.BLACK); // ĐỔI SANG CHỮ ĐEN DỄ NHÌN
+        btnStartAll.setForeground(Color.BLACK);
         btnStartAll.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnStartAll.setFocusPainted(false);
 
         btnStopAll = new JButton("🛑 STOP ALL CHOSEN");
         btnStopAll.setBackground(new Color(220, 53, 69));
-        btnStopAll.setForeground(Color.BLACK); // ĐỔI SANG CHỮ ĐEN DỄ NHÌN
+        btnStopAll.setForeground(Color.BLACK);
         btnStopAll.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnStopAll.setFocusPainted(false);
+
+        // Khởi tạo trạng thái nút tổng ban đầu
+        btnStopAll.setEnabled(false);
 
         batchButtonsPanel.add(btnStartAll);
         batchButtonsPanel.add(btnStopAll);
@@ -119,7 +124,10 @@ public class PhoneFarmFrame extends JFrame {
         btnBrowse.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            chooser.setCurrentDirectory(new File(txtVideoFolder.getText()));
+            // Sửa lỗi NullPointer nếu folder chưa tồn tại
+            File currentDir = new File(txtVideoFolder.getText());
+            if (currentDir.exists()) chooser.setCurrentDirectory(currentDir);
+
             int result = chooser.showOpenDialog(this);
             if (result == JFileChooser.APPROVE_OPTION) {
                 File selectedFolder = chooser.getSelectedFile();
@@ -127,7 +135,6 @@ public class PhoneFarmFrame extends JFrame {
             }
         });
 
-        // HỘP THOẠI CONFIRM RESET DATABASE CHỦ ĐỘNG (THÊM MỚI)
         btnResetDB.addActionListener(e -> {
             int confirm = JOptionPane.showConfirmDialog(
                     this,
@@ -174,9 +181,8 @@ public class PhoneFarmFrame extends JFrame {
             return;
         }
 
-        btnStartAll.setEnabled(false);
-        btnBrowse.setEnabled(false);
-        btnResetDB.setEnabled(false); // Khóa luôn nút reset khi đang chạy để an toàn dữ liệu
+        // --- ĐOẠN ĐÃ SỬA: KHÔNG hardcode Disable nút tổng ở đây nữa ---
+        // Việc Enable/Disable nút tổng sẽ do Callback syncGlobalButtonsState tự lo
 
         if (farmThreadPool != null && !farmThreadPool.isShutdown()) {
             farmThreadPool.shutdownNow();
@@ -187,6 +193,7 @@ public class PhoneFarmFrame extends JFrame {
 
         for (PhoneCard card : chosenCards) {
             farmThreadPool.execute(() -> {
+                // SỬA: Truyền đường dẫn folder tổng từ ô nhập liệu vào từng card
                 card.startAutomateWithFolder(selectedFolderPath);
             });
         }
@@ -197,14 +204,16 @@ public class PhoneFarmFrame extends JFrame {
             farmThreadPool.shutdownNow();
         }
         for (PhoneCard card : activeCardsMap.values()) {
-            if (card.isSelected()) {
+            // Chỉ Stop những máy ĐANG CHẠY và ĐƯỢC CHỌN
+            if (card.isSelected() && card.isWorking()) {
                 card.stopAutomate();
             }
         }
-        btnStartAll.setEnabled(true);
-        btnBrowse.setEnabled(true);
-        btnResetDB.setEnabled(true); // Mở khóa nút reset
-        System.out.println("🛑 Hệ thống đã dừng đồng loạt và giải phóng khóa giao diện.");
+
+        // --- ĐOẠN ĐÃ SỬA: KHÔNG hardcode Enable nút tổng ở đây ---
+        // Callback sẽ tự động nhận biết khi các card chuyển sang trạng thái dừng.
+
+        System.out.println("🛑 Hệ thống đã gửi lệnh dừng đồng loạt đến các máy được chọn.");
     }
 
     private void syncDevicesToUI(List<String> connectedIDs) {
@@ -213,6 +222,13 @@ public class PhoneFarmFrame extends JFrame {
             for (String id : connectedIDs) {
                 if (!activeCardsMap.containsKey(id)) {
                     PhoneCard card = new PhoneCard(id);
+
+                    // =================================================================================
+                    // 🔥 BƯỚC QUAN TRỌNG NHẤT: ĐĂNG KÝ CALLBACK LẮNG NGHE ĐỔI TRẠNG THÁI TỪ CARD CON
+                    // =================================================================================
+                    // Cứ mỗi khi máy con này Bắt đầu chạy hoặc Dừng lại, nó sẽ gọi hàm syncGlobalButtonsState
+                    card.setOnWorkStateChangeListener(this::syncGlobalButtonsState);
+
                     activeCardsMap.put(id, card);
                     gridPanel.add(card);
                     isChanged = true;
@@ -232,9 +248,42 @@ public class PhoneFarmFrame extends JFrame {
             }
             if (isChanged) {
                 lblTotalPhones.setText("⚡ Thiết bị: " + activeCardsMap.size());
+                // Khi số lượng máy thay đổi, tính toán lại trạng thái nút tổng
+                syncGlobalButtonsState();
                 gridPanel.revalidate();
                 gridPanel.repaint();
             }
+        });
+    }
+
+    // =====================================================================================
+    // 🛠️ HÀM CẬP NHẬT Chuẩn: Sử dụng chính activeCardsMap để đồng bộ trạng thái
+    // =====================================================================================
+    private void syncGlobalButtonsState() {
+        // Cam kết thực thi trên luồng giao diện UI để tránh lag
+        SwingUtilities.invokeLater(() -> {
+            boolean anyPhoneWorking = false;
+
+            // QUÉT TOÀN BỘ GIÁ TRỊ TRONG MAP THỰC TẾ CỦA BẠN
+            if (activeCardsMap != null) {
+                for (PhoneCard card : activeCardsMap.values()) {
+                    if (card.isWorking()) {
+                        anyPhoneWorking = true;
+                        break; // Chỉ cần 1 máy đang chạy là đủ điều kiện bật Stop All
+                    }
+                }
+            }
+
+            // ĐỒNG BỘ TRẠNG THÁI NÚT TỔNG DỰA TRÊN THỰC TẾ CÁC MÁY CON
+            // 1. Nút START ALL: Chỉ sáng lên khi KHÔNG CÓ máy nào đang làm việc
+            btnStartAll.setEnabled(!anyPhoneWorking);
+
+            // 2. Nút STOP ALL: Chỉ sáng lên khi CÓ ÍT NHẤT 1 máy đang làm việc
+            btnStopAll.setEnabled(anyPhoneWorking);
+
+            // 3. Khóa luôn các nút cấu hình khi Farm đang vận hành để đảm bảo an toàn
+            btnBrowse.setEnabled(!anyPhoneWorking);
+            btnResetDB.setEnabled(!anyPhoneWorking);
         });
     }
 }

@@ -24,6 +24,24 @@ public class PhoneCard extends JPanel {
     // Trạng thái chặn việc tạo trùng luồng
     private volatile boolean isWorking = false;
 
+    // Thêm interface để Frame cha đăng ký lắng nghe
+    public interface OnWorkStateChangeListener {
+        void onStateChanged();
+    }
+    private OnWorkStateChangeListener workStateChangeListener;
+
+    public void setOnWorkStateChangeListener(OnWorkStateChangeListener listener) {
+        this.workStateChangeListener = listener;
+    }
+
+    // Hàm Helper để đổi trạng thái và tự động báo cáo lên nút tổng
+    private synchronized void setWorkingState(boolean working) {
+        this.isWorking = working;
+        if (workStateChangeListener != null) {
+            SwingUtilities.invokeLater(() -> workStateChangeListener.onStateChanged());
+        }
+    }
+
     public PhoneCard(String deviceId) {
         this.deviceId = deviceId;
 
@@ -108,7 +126,7 @@ public class PhoneCard extends JPanel {
         String finalPath = (customFolderPath == null || customFolderPath.trim().isEmpty())
                 ? "D:\\demo" : customFolderPath; // Đổi sang ổ D đồng bộ thực tế của bạn
 
-        isWorking = true;
+        setWorkingState(true);
         worker = new AutomationWorker(deviceId, finalPath, this::updateButtonStates);
         new Thread(worker).start();
     }
@@ -117,7 +135,7 @@ public class PhoneCard extends JPanel {
         if (worker != null) {
             worker.stopWorker();
         }
-        isWorking = false;
+        setWorkingState(false);
     }
 
     public boolean isSelected() {
@@ -209,10 +227,10 @@ public class PhoneCard extends JPanel {
                 lblStatus.setForeground(new Color(0, 123, 255));
             } else if (statusText.contains("dừng") || statusText.contains("❌")) {
                 lblStatus.setForeground(Color.RED);
-                isWorking = false; // Trả trạng thái tự do khi bị dừng hoặc lỗi hoãn luồng
+                setWorkingState(false); // Đổi ở đây
             } else if (statusText.contains("Hoàn thành") || statusText.contains("✅")) {
                 lblStatus.setForeground(new Color(40, 167, 69));
-                isWorking = false; // Trả trạng thái tự do khi chạy xong hết video
+                setWorkingState(false); // Đổi ở đây
             }
 
             btnStart.setEnabled(startEnabled);

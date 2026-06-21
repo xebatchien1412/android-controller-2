@@ -334,7 +334,7 @@ public class AutomationWorker implements Runnable {
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Ấn nút Nhập", false, true);
                     executeADBCommand("shell", "input", "tap", "360", "670");
-                    Thread.sleep(7000);
+                    Thread.sleep(10000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Tích Chọn tất cả", false, true);
@@ -366,45 +366,45 @@ public class AutomationWorker implements Runnable {
 
                     System.out.println("🤖 [" + deviceId + "] Đang tiến hành gõ Mô tả trực tiếp qua lệnh 'input text'...");
                     executeADBCommand("shell", "input", "text", escapedDescription);
-                    Thread.sleep(5000); // Tăng lên 5 giây vì chuỗi mô tả khá dài, chờ máy tuôn chữ xong
+                    Thread.sleep(10000); // Tăng lên 5 giây vì chuỗi mô tả khá dài, chờ máy tuôn chữ xong
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Lưu mô tả", false, true);
                     executeADBCommand("shell", "input", "tap", "640", "115");
                     Thread.sleep(4000); // Tăng lên 4 giây để app xử lý lưu và chuyển trang an toàn
 
-//                    if (!running) break;
-//                    notifyUI("▶️ Vòng " + currentLoop + ": Tiến hành Đăng bài", false, true);
-//                    executeADBCommand("shell", "input", "tap", "580", "1430");
-//
-//                    System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
-//
-//                    boolean uploadFinished = false;
-//                    for (int checkRound = 1; checkRound <= 40; checkRound++) {
-//                        if (!running) break;
-//
-//                        int secondsElapsed = checkRound * 3;
-//                        notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
-//                        Thread.sleep(3000);
-//
-//                        boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
-//                                || checkCurrentActivityContains("PostVideoActivity")
-//                                || checkCurrentActivityContains("sharing.ShareActivity");
-//
-//                        if (!isStillOnUploadScreen) {
-//                            System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
-//                            uploadFinished = true;
-//                            break;
-//                        }
-//                    }
-//
-//                    if (!uploadFinished) {
-//                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout). Ép đóng Shopee để cứu luồng.");
-//                        executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
-//                    }
-//
-//                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
-//                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
+                    if (!running) break;
+                    notifyUI("▶️ Vòng " + currentLoop + ": Tiến hành Đăng bài", false, true);
+                    executeADBCommand("shell", "input", "tap", "540", "1430");
+                    Thread.sleep(8000); // Tăng thời gian chờ lên 8 giây để máy load upload video lên server Shopee an toàn
+                    System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
+
+                    boolean uploadFinished = false;
+                    for (int checkRound = 1; checkRound <= 40; checkRound++) {
+                        if (!running) break;
+
+                        int secondsElapsed = checkRound * 3;
+                        notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
+                        Thread.sleep(60000);
+
+                        boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
+                                || checkCurrentActivityContains("PostVideoActivity")
+                                || checkCurrentActivityContains("sharing.ShareActivity");
+
+                        if (!isStillOnUploadScreen) {
+                            System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
+                            uploadFinished = true;
+                            break;
+                        }
+                    }
+
+                    if (!uploadFinished) {
+                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout). Ép đóng Shopee để cứu luồng.");
+                        executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
+                    }
+
+                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
+                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
 
                     System.out.println("🗑️ [" + deviceId + "] Tiến hành xóa video tạm trên điện thoại...");
                     String escapedDeletePath = "'" + remotePath.replace("'", "'\\''") + "'";
@@ -415,25 +415,25 @@ public class AutomationWorker implements Runnable {
                     }
                     Thread.sleep(1000);
 
-//                    if (currentLoop % 10 == 0) {
-//                        System.out.println("🧹 [" + deviceId + "] Hệ thống chạm mốc 10 video. Tiến hành dọn dẹp RAM và giải nhiệt cho Oppo...");
-//                        notifyUI("🧹 Vòng " + currentLoop + ": Đang bảo dưỡng máy", false, true);
-//
-//                        executeADBCommand("shell", "pm", "clear-current-user-media-cache", SHOPEE_PACKAGE);
-//                        executeADBCommand("shell", "am", "kill-all");
-//                        Thread.sleep(1000);
-//
-//                        executeADBCommand("shell", "am", "force-stop", "com.android.providers.media");
-//                        executeADBCommand("shell", "am", "force-stop", "com.coloros.gallery3d");
-//                        Thread.sleep(1000);
-//
-//                        System.out.println("⏳ [" + deviceId + "] Cho phép máy nghỉ 15 giây để hạ nhiệt độ phần cứng...");
-//                        for (int i = 15; i > 0; i--) {
-//                            if (!running) break;
-//                            notifyUI("⏳ Hạ nhiệt: " + i + "s", false, true);
-//                            Thread.sleep(1000);
-//                        }
-//                    }
+                    if (currentLoop % 10 == 0) {
+                        System.out.println("🧹 [" + deviceId + "] Hệ thống chạm mốc 10 video. Tiến hành dọn dẹp RAM và giải nhiệt cho Oppo...");
+                        notifyUI("🧹 Vòng " + currentLoop + ": Đang bảo dưỡng máy", false, true);
+
+                        executeADBCommand("shell", "pm", "clear-current-user-media-cache", SHOPEE_PACKAGE);
+                        executeADBCommand("shell", "am", "kill-all");
+                        Thread.sleep(1000);
+
+                        executeADBCommand("shell", "am", "force-stop", "com.android.providers.media");
+                        executeADBCommand("shell", "am", "force-stop", "com.coloros.gallery3d");
+                        Thread.sleep(1000);
+
+                        System.out.println("⏳ [" + deviceId + "] Cho phép máy nghỉ 15 giây để hạ nhiệt độ phần cứng...");
+                        for (int i = 15; i > 0; i--) {
+                            if (!running) break;
+                            notifyUI("⏳ Hạ nhiệt: " + i + "s", false, true);
+                            Thread.sleep(1000);
+                        }
+                    }
                 } catch (InterruptedException e) {
                     System.out.println("❌ [" + deviceId + "] Tiến trình bị ngắt quãng.");
                     break;

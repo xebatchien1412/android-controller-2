@@ -128,6 +128,13 @@ public class AutomationWorker implements Runnable {
             ADBCommand.optimizeHardwareScreen(deviceId, true);
             ADBCommand.enableADBKeyboard(deviceId);
 
+            // =========================================================================
+            // 🔥 THÊM MỚI: DỌN SẠCH FILE CŨ CÒN SÓT LẠI DO LẦN PAUSE/STOP TRƯỚC ĐÓ
+            // =========================================================================
+            System.out.println("🧹 [" + deviceId + "] Khởi động máy: Tiến hành dọn sạch file video.mp4 dư thừa cũ trên điện thoại...");
+            executeADBCommand("shell", "rm", "-f", "/sdcard/Download/video.mp4");
+            Thread.sleep(1000); // Nghỉ 1 giây để Android cập nhật lại phân vùng lưu trữ
+
             int uploadCount = 0;
 
             // BẮT ĐẦU CHU KỲ QUÉT THƯ MỤC CẤU TRÚC MỚI
@@ -203,6 +210,37 @@ public class AutomationWorker implements Runnable {
                     executeADBCommand("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", escapedUri);
                     Thread.sleep(2000);
 
+                    // =========================================================================
+// 🔥 ĐỌC FILE TEXT DUY NHẤT 1 LẦN: LẤY SẠCH CẢ LINK VÀ DESCRIPTION
+// =========================================================================
+                    String finalDescriptionText = "#shopee #trending"; // Văn bản mặc định phòng hờ
+                    List<String> rawAffiliateLinks = new ArrayList<>();
+
+                    try (BufferedReader br = new BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(targetMetadataFile), java.nio.charset.StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            String trimmedLine = line.trim();
+                            String lowerLine = trimmedLine.toLowerCase();
+
+                            // 1. Nếu trúng dòng Link Affiliate
+                            if (lowerLine.startsWith("link affiliate:")) {
+                                String linksPart = trimmedLine.substring(trimmedLine.indexOf(":") + 1).trim();
+                                String[] parts = linksPart.split(",");
+                                for (String part : parts) {
+                                    if (!part.trim().isEmpty() && rawAffiliateLinks.size() < 6) {
+                                        rawAffiliateLinks.add(part.trim());
+                                    }
+                                }
+                            }
+                            // 2. Nếu trúng dòng Description
+                            else if (lowerLine.startsWith("description:")) {
+                                finalDescriptionText = trimmedLine.substring(trimmedLine.indexOf(":") + 1).trim();
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.out.println("⚠️ Lỗi đọc file metadata.txt: " + e.getMessage());
+                    }
+
                     // KỊCH BẢN GIẢ LẬP CLICK UI VÀ NHẬP TEXT TRÊN APP SHOPEE
                     notifyUI("▶️ Vòng " + currentLoop + ": Mở Shopee", false, true);
                     executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
@@ -216,6 +254,11 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Chọn tab Video", false, true);
+                    executeADBCommand("shell", "input", "tap", "360", "1510");
+                    Thread.sleep(4000);
+
+                    if (!running) break;
+                    // CHon tab 1 video 1 lan nua de skip alert
                     executeADBCommand("shell", "input", "tap", "360", "1510");
                     Thread.sleep(4000);
 
@@ -252,7 +295,7 @@ public class AutomationWorker implements Runnable {
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Thêm sản phẩm", false, true);
                     executeADBCommand("shell", "input", "tap", "600", "530");
-                    Thread.sleep(4000);
+                    Thread.sleep(10000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Chọn dán link", false, true);
@@ -262,46 +305,40 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Kích hoạt ô nhập", false, true);
-                    executeADBCommand("shell", "input", "tap", "360", "250");
+                    executeADBCommand("shell", "input", "tap", "345", "405");
                     Thread.sleep(2000);
 
-                    List<String> rawAffiliateLinks = new ArrayList<>();
-                    try (BufferedReader br = new BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(targetMetadataFile), java.nio.charset.StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = br.readLine()) != null) {
-                            if (line.trim().toLowerCase().startsWith("link affiliate:")) {
-                                String[] parts = line.substring(15).trim().split(",");
-                                for (String part : parts) {
-                                    if (!part.trim().isEmpty() && rawAffiliateLinks.size() < 6) {
-                                        rawAffiliateLinks.add(part.trim());
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {}
+                    if (!running) break;
+                    notifyUI("▶️ Vòng " + currentLoop + ": Dọn sạch ô nhập cũ", false, true);
+                    executeADBCommand("shell", "input", "tap", "600", "225");
+                    Thread.sleep(1500); // Chờ Shopee xóa sạch các link cũ về ô trống tinh khôi
 
-                    StringBuilder finalLinksText = new StringBuilder();
+                    System.out.println("🤖 [" + deviceId + "] Tìm thấy " + rawAffiliateLinks.size() + " liên kết hợp lệ.");
+
                     for (int i = 0; i < rawAffiliateLinks.size(); i++) {
-                        finalLinksText.append(rawAffiliateLinks.get(i));
-                        if (i < rawAffiliateLinks.size() - 1) {
-                            finalLinksText.append("\n");
-                        }
+                        String singleLink = rawAffiliateLinks.get(i);
+                        System.out.println("🔗 -> Đang gõ link " + (i + 1) + ": " + singleLink);
+
+                        // 🔥 THAY ĐỔI CHÍ MẠNG: Dùng lệnh 'input text' nguyên bản của ADB thay vì ADBKeyboard
+                        // Lệnh này truyền chuỗi URL chứa dấu ':' và '/' chính xác 100%, không bao giờ bị nuốt chữ
+                        executeADBCommand("shell", "input", "text", singleLink);
+                        Thread.sleep(2000); // Đợi 2 giây để điện thoại hiển thị trọn vẹn tiến trình gõ link
+
+                        // Gửi lệnh bấm phím ENTER (KEYCODE_ENTER = 66) để Shopee xác nhận và tự động tạo dòng mới
+                        executeADBCommand("shell", "input", "keyevent", "66");
+                        Thread.sleep(1200); // Đợi con trỏ chuột ổn định ở dòng tiếp theo
                     }
 
-                    System.out.println("🤖 [" + deviceId + "] Đẩy link vào bộ nhớ tạm hệ thống...");
-                    executeADBCommand("shell", "content", "insert", "--uri", "content://clipboard/text", "--bind", "text:s:\"" + finalLinksText.toString() + "\"");
-                    Thread.sleep(1500);
+                    System.out.println("🎉 [" + deviceId + "] Đã hoàn thành gõ toàn bộ danh sách link!");
 
-                    executeADBCommand("shell", "input", "keyevent", "279");
-                    Thread.sleep(2000);
-
+                    if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Ấn nút Nhập", false, true);
-                    executeADBCommand("shell", "input", "tap", "490", "420");
-                    Thread.sleep(4000);
+                    executeADBCommand("shell", "input", "tap", "360", "670");
+                    Thread.sleep(7000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Tích Chọn tất cả", false, true);
-                    executeADBCommand("shell", "input", "tap", "100", "1370");
+                    executeADBCommand("shell", "input", "tap", "60", "1380");
                     Thread.sleep(2000);
 
                     if (!running) break;
@@ -311,51 +348,63 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Kích hoạt mô tả", false, true);
-                    executeADBCommand("shell", "input", "tap", "550", "130");
+                    executeADBCommand("shell", "input", "tap", "500", "230");
                     Thread.sleep(2500);
 
-                    String finalDescriptionText = parseMetadata(targetMetadataFile);
-                    System.out.println("🤖 [" + deviceId + "] Gửi văn bản Tiếng Việt có dấu trực tiếp qua ADBKeyboard...");
-                    ADBCommand.sendVietnameseText(deviceId, finalDescriptionText);
-                    Thread.sleep(3000);
+                    // 🔥 BƯỚC 1: Ép máy Oppo bật lại ADBKeyboard để giành quyền gõ chữ
+                    System.out.println("⌨️ [" + deviceId + "] Đang ép kích hoạt lại ADBKeyboard cho ô nhập mới...");
+                    ADBCommand.enableADBKeyboard(deviceId);
+                    Thread.sleep(1500);
+
+                    System.out.println("📝 Nội dung mô tả gốc: " + finalDescriptionText);
+
+                    String escapedDescription = finalDescriptionText
+                            .replace(" ", "\\ ")     // Biến khoảng trắng thành dấu cách thô hợp lệ cho Shell
+                            .replace("#", "\\#")     // Biến dấu # thành ký tự thường, không bị hiểu nhầm là lệnh Comment
+                            .replace("'", "\\'")     // Bảo vệ dấu nháy đơn nếu có
+                            .replace("\"", "\\\"");   // Bảo vệ dấu nháy kép nếu có
+
+                    System.out.println("🤖 [" + deviceId + "] Đang tiến hành gõ Mô tả trực tiếp qua lệnh 'input text'...");
+                    executeADBCommand("shell", "input", "text", escapedDescription);
+                    Thread.sleep(5000); // Tăng lên 5 giây vì chuỗi mô tả khá dài, chờ máy tuôn chữ xong
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Lưu mô tả", false, true);
-                    executeADBCommand("shell", "input", "tap", "660", "75");
-                    Thread.sleep(3000);
+                    executeADBCommand("shell", "input", "tap", "640", "115");
+                    Thread.sleep(4000); // Tăng lên 4 giây để app xử lý lưu và chuyển trang an toàn
 
-                    if (!running) break;
-                    notifyUI("▶️ Vòng " + currentLoop + ": Tiến hành Đăng bài", false, true);
-                    executeADBCommand("shell", "input", "tap", "580", "1430");
-
-                    System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
-
-                    boolean uploadFinished = false;
-                    for (int checkRound = 1; checkRound <= 40; checkRound++) {
-                        if (!running) break;
-
-                        int secondsElapsed = checkRound * 3;
-                        notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
-                        Thread.sleep(3000);
-
-                        boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
-                                || checkCurrentActivityContains("PostVideoActivity")
-                                || checkCurrentActivityContains("sharing.ShareActivity");
-
-                        if (!isStillOnUploadScreen) {
-                            System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
-                            uploadFinished = true;
-                            break;
-                        }
-                    }
-
-                    if (!uploadFinished) {
-                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout). Ép đóng Shopee để cứu luồng.");
-                        executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
-                    }
-
-                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
-                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
+//                    if (!running) break;
+//                    notifyUI("▶️ Vòng " + currentLoop + ": Tiến hành Đăng bài", false, true);
+//                    executeADBCommand("shell", "input", "tap", "580", "1430");
+//
+//                    System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
+//
+//                    boolean uploadFinished = false;
+//                    for (int checkRound = 1; checkRound <= 40; checkRound++) {
+//                        if (!running) break;
+//
+//                        int secondsElapsed = checkRound * 3;
+//                        notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
+//                        Thread.sleep(3000);
+//
+//                        boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
+//                                || checkCurrentActivityContains("PostVideoActivity")
+//                                || checkCurrentActivityContains("sharing.ShareActivity");
+//
+//                        if (!isStillOnUploadScreen) {
+//                            System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
+//                            uploadFinished = true;
+//                            break;
+//                        }
+//                    }
+//
+//                    if (!uploadFinished) {
+//                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout). Ép đóng Shopee để cứu luồng.");
+//                        executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
+//                    }
+//
+//                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
+//                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
 
                     System.out.println("🗑️ [" + deviceId + "] Tiến hành xóa video tạm trên điện thoại...");
                     String escapedDeletePath = "'" + remotePath.replace("'", "'\\''") + "'";
@@ -366,31 +415,33 @@ public class AutomationWorker implements Runnable {
                     }
                     Thread.sleep(1000);
 
-                    if (currentLoop % 10 == 0) {
-                        System.out.println("🧹 [" + deviceId + "] Hệ thống chạm mốc 10 video. Tiến hành dọn dẹp RAM và giải nhiệt cho Oppo...");
-                        notifyUI("🧹 Vòng " + currentLoop + ": Đang bảo dưỡng máy", false, true);
-
-                        executeADBCommand("shell", "pm", "clear-current-user-media-cache", SHOPEE_PACKAGE);
-                        executeADBCommand("shell", "am", "kill-all");
-                        Thread.sleep(1000);
-
-                        executeADBCommand("shell", "am", "force-stop", "com.android.providers.media");
-                        executeADBCommand("shell", "am", "force-stop", "com.coloros.gallery3d");
-                        Thread.sleep(1000);
-
-                        System.out.println("⏳ [" + deviceId + "] Cho phép máy nghỉ 15 giây để hạ nhiệt độ phần cứng...");
-                        for (int i = 15; i > 0; i--) {
-                            if (!running) break;
-                            notifyUI("⏳ Hạ nhiệt: " + i + "s", false, true);
-                            Thread.sleep(1000);
-                        }
-                    }
+//                    if (currentLoop % 10 == 0) {
+//                        System.out.println("🧹 [" + deviceId + "] Hệ thống chạm mốc 10 video. Tiến hành dọn dẹp RAM và giải nhiệt cho Oppo...");
+//                        notifyUI("🧹 Vòng " + currentLoop + ": Đang bảo dưỡng máy", false, true);
+//
+//                        executeADBCommand("shell", "pm", "clear-current-user-media-cache", SHOPEE_PACKAGE);
+//                        executeADBCommand("shell", "am", "kill-all");
+//                        Thread.sleep(1000);
+//
+//                        executeADBCommand("shell", "am", "force-stop", "com.android.providers.media");
+//                        executeADBCommand("shell", "am", "force-stop", "com.coloros.gallery3d");
+//                        Thread.sleep(1000);
+//
+//                        System.out.println("⏳ [" + deviceId + "] Cho phép máy nghỉ 15 giây để hạ nhiệt độ phần cứng...");
+//                        for (int i = 15; i > 0; i--) {
+//                            if (!running) break;
+//                            notifyUI("⏳ Hạ nhiệt: " + i + "s", false, true);
+//                            Thread.sleep(1000);
+//                        }
+//                    }
                 } catch (InterruptedException e) {
                     System.out.println("❌ [" + deviceId + "] Tiến trình bị ngắt quãng.");
                     break;
                 }
             }
-        } finally {
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+
             ADBCommand.resetDefaultKeyboard(deviceId);
             ADBCommand.optimizeHardwareScreen(deviceId, false);
 

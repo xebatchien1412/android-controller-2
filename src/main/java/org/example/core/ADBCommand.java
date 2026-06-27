@@ -69,25 +69,14 @@ public class ADBCommand {
      * Hàm điều khiển độ sáng phần cứng Oppo về 0% (Tiết kiệm 30% nhiệt năng, chống chai pin)
      */
     public static void optimizeHardwareScreen(String deviceId, boolean turnOff) {
-        if (turnOff) {
-            // Chuyển sang chế độ sáng Thủ công (0: Manual, 1: Auto)
-            executeADB(deviceId, "shell", "settings", "put", "system", "screen_brightness_mode", "0");
-            // Hạ độ sáng màn hình xuống mức thấp nhất
-            executeADB(deviceId, "shell", "settings", "put", "system", "screen_brightness", "0");
-            System.out.println("🔌 [MÁY " + deviceId + "] Đã đưa màn hình về chế độ siêu tiết kiệm điện (Độ sáng 0%).");
-        } else {
-            // Khôi phục lại chế độ tự động và độ sáng trung bình (125) khi bảo trì / dừng tool
-            executeADB(deviceId, "shell", "settings", "put", "system", "screen_brightness_mode", "1");
-            executeADB(deviceId, "shell", "settings", "put", "system", "screen_brightness", "125");
-            System.out.println("🔌 [MÁY " + deviceId + "] Đã khôi phục độ sáng màn hình mặc định.");
-        }
+        // Đã gỡ bỏ tính năng tự động thay đổi độ sáng màn hình theo yêu cầu người dùng
     }
 
     /**
      * Kích hoạt bộ gõ ADBKeyboard làm bàn phím chính thức
      */
     public static void enableADBKeyboard(String deviceId) {
-        executeADB(deviceId, "shell", "ime", "set", "com.android.adbkeyboard/.ADBIME");
+        executeADB(deviceId, "shell", "ime", "set", "com.android.adbkeyboard/.AdbIME");
     }
 
     /**
@@ -107,6 +96,36 @@ public class ADBCommand {
             executeADB(deviceId, "shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", base64Text);
         } catch (Exception e) {
             System.out.println("❌ Lỗi gửi text Base64 [" + deviceId + "]: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Nhập text an toàn bằng cách tự động ngắt từ ngay sau mỗi nguyên âm và chữ d (ví dụ: a, e, i, o, u, y, d)
+     * Giúp tránh tuyệt đối việc gõ Telex ghép dấu từ xa (ví dụ: y...j ghép thành ỵ) trên mọi bàn phím tiếng Việt.
+     */
+    public static void typeTextWithoutTelex(String deviceId, String text) {
+        if (text == null || text.isEmpty()) return;
+
+        String vowelsAndD = "aeiouydAEIOUYD";
+        StringBuilder currentChunk = new StringBuilder();
+
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            currentChunk.append(c);
+
+            // Nếu ký tự vừa thêm là nguyên âm hoặc chữ d, ta gửi chunk đi và ngắt từ bằng SPACE + BACKSPACE
+            if (vowelsAndD.indexOf(c) >= 0) {
+                executeADB(deviceId, "shell", "input", "text", currentChunk.toString());
+                currentChunk.setLength(0);
+
+                // Gửi phím SPACE (62) và BACKSPACE (67) để xoá bộ đệm gõ Telex trên điện thoại
+                executeADB(deviceId, "shell", "input", "keyevent", "62");
+                executeADB(deviceId, "shell", "input", "keyevent", "67");
+            }
+        }
+
+        if (currentChunk.length() > 0) {
+            executeADB(deviceId, "shell", "input", "text", currentChunk.toString());
         }
     }
 

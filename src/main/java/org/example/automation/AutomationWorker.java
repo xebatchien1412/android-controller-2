@@ -125,7 +125,6 @@ public class AutomationWorker implements Runnable {
         try {
             // [TÍNH NĂNG NÂNG CAO]: Thực thi chuẩn bị môi trường máy bộc phá ngay lập tức khi bấm Start
             ADBCommand.installADBKeyboardIfMissing(deviceId);
-            ADBCommand.optimizeHardwareScreen(deviceId, true);
             ADBCommand.enableADBKeyboard(deviceId);
 
             // =========================================================================
@@ -134,6 +133,26 @@ public class AutomationWorker implements Runnable {
             System.out.println("🧹 [" + deviceId + "] Khởi động máy: Tiến hành dọn sạch file video.mp4 dư thừa cũ trên điện thoại...");
             executeADBCommand("shell", "rm", "-f", "/sdcard/Download/video.mp4");
             Thread.sleep(1000); // Nghỉ 1 giây để Android cập nhật lại phân vùng lưu trữ
+
+            // =========================================================================
+            // 🔥 THÊM MỚI: MỞ SHOPEE 1 LẦN ĐỂ LOAD HẾT POPUP QUẢNG CÁO RỒI TẮT ĐI
+            // =========================================================================
+            System.out.println("🚀 [" + deviceId + "] Khởi động ấm: Mở Shopee để tải hết các popup quảng cáo...");
+            notifyUI("⏳ Mở Shopee nháp", false, true);
+            executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
+            Thread.sleep(1000);
+            executeADBCommand("shell", "am", "start", "-n", SHOPEE_PACKAGE + "/" + SHOPEE_ACTIVITY);
+            
+            // Đợi 10 giây để popup quảng cáo load lên hết
+            for (int i = 10; i > 0; i--) {
+                if (!running) break;
+                notifyUI("⏳ Chờ tắt Shopee: " + i + "s", false, true);
+                Thread.sleep(1000);
+            }
+            
+            System.out.println("🧹 [" + deviceId + "] Đóng Shopee nháp sau khi load xong quảng cáo.");
+            executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
+            Thread.sleep(1500);
 
             int uploadCount = 0;
 
@@ -269,6 +288,10 @@ public class AutomationWorker implements Runnable {
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Mở Thư viện", false, true);
+                    // Double-tap nhanh tại cùng tọa độ với delay cực ngắn (100ms) để chắc chắn nhận click,
+                    // tránh trễ nhịp làm click lan sang màn hình tiếp theo sau khi chuyển cảnh.
+                    executeADBCommand("shell", "input", "tap", "610", "1220");
+                    Thread.sleep(100);
                     executeADBCommand("shell", "input", "tap", "610", "1220");
                     Thread.sleep(5000);
 
@@ -313,17 +336,20 @@ public class AutomationWorker implements Runnable {
                     executeADBCommand("shell", "input", "tap", "600", "225");
                     Thread.sleep(1500); // Chờ Shopee xóa sạch các link cũ về ô trống tinh khôi
 
+                    System.out.println("⌨️ [" + deviceId + "] Đang kích hoạt lại ADBKeyboard để dán link...");
+                    ADBCommand.enableADBKeyboard(deviceId);
+                    Thread.sleep(1500);
+
                     System.out.println("🤖 [" + deviceId + "] Tìm thấy " + rawAffiliateLinks.size() + " liên kết hợp lệ.");
 
                     for (int i = 0; i < rawAffiliateLinks.size(); i++) {
                         String singleLink = rawAffiliateLinks.get(i);
                         System.out.println("🔗 -> Đang gõ link " + (i + 1) + ": " + singleLink);
-
-                        // 🔥 THAY ĐỔI CHÍ MẠNG: Dùng lệnh 'input text' nguyên bản của ADB thay vì ADBKeyboard
-                        // Lệnh này truyền chuỗi URL chứa dấu ':' và '/' chính xác 100%, không bao giờ bị nuốt chữ
-                        executeADBCommand("shell", "input", "text", singleLink);
+ 
+                        // Sử dụng phương pháp chia nhỏ và ngắt Telex tự động để gõ link chính xác trên mọi bàn phím (không bị lỗi ũ, â, ô...)
+                        ADBCommand.typeTextWithoutTelex(deviceId, singleLink);
                         Thread.sleep(2000); // Đợi 2 giây để điện thoại hiển thị trọn vẹn tiến trình gõ link
-
+ 
                         // Gửi lệnh bấm phím ENTER (KEYCODE_ENTER = 66) để Shopee xác nhận và tự động tạo dòng mới
                         executeADBCommand("shell", "input", "keyevent", "66");
                         Thread.sleep(1200); // Đợi con trỏ chuột ổn định ở dòng tiếp theo
@@ -358,15 +384,10 @@ public class AutomationWorker implements Runnable {
 
                     System.out.println("📝 Nội dung mô tả gốc: " + finalDescriptionText);
 
-                    String escapedDescription = finalDescriptionText
-                            .replace(" ", "\\ ")     // Biến khoảng trắng thành dấu cách thô hợp lệ cho Shell
-                            .replace("#", "\\#")     // Biến dấu # thành ký tự thường, không bị hiểu nhầm là lệnh Comment
-                            .replace("'", "\\'")     // Bảo vệ dấu nháy đơn nếu có
-                            .replace("\"", "\\\"");   // Bảo vệ dấu nháy kép nếu có
-
-                    System.out.println("🤖 [" + deviceId + "] Đang tiến hành gõ Mô tả trực tiếp qua lệnh 'input text'...");
-                    executeADBCommand("shell", "input", "text", escapedDescription);
-                    Thread.sleep(10000); // Tăng lên 5 giây vì chuỗi mô tả khá dài, chờ máy tuôn chữ xong
+                    // Sử dụng ADBKeyboard gửi qua Base64 để tránh lỗi Telex và hỗ trợ đầy đủ ký tự Unicode tiếng Việt
+                    System.out.println("🤖 [" + deviceId + "] Đang tiến hành gửi Mô tả qua ADBKeyboard...");
+                    ADBCommand.sendVietnameseText(deviceId, finalDescriptionText);
+                    Thread.sleep(5000); // Chờ hiển thị text xong
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Lưu mô tả", false, true);
@@ -380,26 +401,25 @@ public class AutomationWorker implements Runnable {
                     System.out.println("⏳ [" + deviceId + "] Đang theo dõi tiến trình upload video lên mạng...");
 
                     boolean uploadFinished = false;
-                    for (int checkRound = 1; checkRound <= 40; checkRound++) {
+                    for (int secondsLeft = 60; secondsLeft > 0; secondsLeft--) {
                         if (!running) break;
 
-                        int secondsElapsed = checkRound * 3;
-                        notifyUI("⏳ Upload: Đang đợi " + secondsElapsed + "s", false, true);
-                        Thread.sleep(60000);
+                        notifyUI("⏳ Upload: Đang đợi " + secondsLeft + "s", false, true);
+                        Thread.sleep(1000);
+                    }
 
-                        boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
-                                || checkCurrentActivityContains("PostVideoActivity")
-                                || checkCurrentActivityContains("sharing.ShareActivity");
+                    // Sau khi đợi hết 60 giây, kiểm tra xem đã hoàn thành upload và thoát khỏi màn hình đăng bài chưa
+                    boolean isStillOnUploadScreen = checkCurrentActivityContains("VideoShareActivity")
+                            || checkCurrentActivityContains("PostVideoActivity")
+                            || checkCurrentActivityContains("sharing.ShareActivity");
 
-                        if (!isStillOnUploadScreen) {
-                            System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công ở giây thứ " + secondsElapsed + "! Chuyển sang vòng tiếp theo.");
-                            uploadFinished = true;
-                            break;
-                        }
+                    if (!isStillOnUploadScreen) {
+                        System.out.println("✅ [MÁY " + deviceId + "]: Upload thành công! Chuyển sang vòng tiếp theo.");
+                        uploadFinished = true;
                     }
 
                     if (!uploadFinished) {
-                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout). Ép đóng Shopee để cứu luồng.");
+                        System.out.println("⚠️ [MÁY " + deviceId + "]: Quá thời gian upload (Timeout 60s). Ép đóng Shopee để cứu luồng.");
                         executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
                     }
 
@@ -443,7 +463,6 @@ public class AutomationWorker implements Runnable {
             e.printStackTrace();
 
             ADBCommand.resetDefaultKeyboard(deviceId);
-            ADBCommand.optimizeHardwareScreen(deviceId, false);
 
             if (running) {
                 notifyUI("✅ Hoàn thành", true, false);
@@ -458,7 +477,6 @@ public class AutomationWorker implements Runnable {
         new Thread(() -> {
             executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
             ADBCommand.resetDefaultKeyboard(deviceId);
-            ADBCommand.optimizeHardwareScreen(deviceId, false);
         }).start();
     }
 

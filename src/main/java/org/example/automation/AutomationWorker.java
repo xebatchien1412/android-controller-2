@@ -23,6 +23,7 @@ public class AutomationWorker implements Runnable {
 
     private volatile boolean running = true;
     private static final int MAX_VIDEOS_PER_DAY = 90;
+    private volatile Thread workerThread;
 
     public interface OnStatusUpdateListener {
         void onUpdate(String status, boolean startEnabled, boolean stopEnabled);
@@ -122,6 +123,7 @@ public class AutomationWorker implements Runnable {
 
     @Override
     public void run() {
+        this.workerThread = Thread.currentThread();
         try {
             // [TÍNH NĂNG NÂNG CAO]: Thực thi chuẩn bị môi trường máy bộc phá ngay lập tức khi bấm Start
             ADBCommand.installADBKeyboardIfMissing(deviceId);
@@ -183,15 +185,15 @@ public class AutomationWorker implements Runnable {
                             File videoFile = mp4Files[0];
                             currentPackName = subFolder.getName(); // Lấy tên thư mục con làm định danh (Ví dụ: Alexander Ferros 5052S)
 
-                            // Kiểm tra trạng thái trong DB bằng TÊN PACK thay vì tên file video.mp4 trùng lặp
-                            String status = DatabaseManager.checkVideoStatusForDevice(currentPackName, deviceId);
+                            // Kiểm tra trạng thái trong DB bằng tên video (unique) thay vì tên pack
+                            String status = DatabaseManager.checkVideoStatusForDevice(videoFile.getName(), deviceId);
 
                             if ("PENDING".equals(status) || "NOT_EXISTS".equals(status)) {
                                 targetVideoFile = videoFile;
                                 targetMetadataFile = txtFiles[0];
 
-                                // Đăng ký tên Pack vào database để cô lập luồng
-                                DatabaseManager.insertVideoIfNotExist(currentPackName, deviceId);
+                                // Đăng ký tên video vào database để cô lập luồng
+                                DatabaseManager.insertVideoIfNotExist(videoFile.getName(), deviceId);
                                 break;
                             }
                         }
@@ -208,9 +210,9 @@ public class AutomationWorker implements Runnable {
                     String currentVideoName = targetVideoFile.getName();
 
                     notifyUI("▶️ Vòng " + currentLoop + ": Đang chạy", false, true);
-                    System.out.println("🚀 [" + deviceId + "] ====== BẮT ĐẦU VÒNG " + currentLoop + " [Pack: " + currentPackName + "] ======");
+                    System.out.println("🚀 [" + deviceId + "] ====== BẮT ĐẦU VÒNG " + currentLoop + " [Pack: " + currentPackName + ", Video: " + currentVideoName + "] ======");
 
-                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "PROCESSING");
+                    DatabaseManager.updateVideoStatus(currentVideoName, deviceId, "PROCESSING");
 
                     File processedVideo = alterVideoHash(targetVideoFile);
 
@@ -346,8 +348,8 @@ public class AutomationWorker implements Runnable {
                         String singleLink = rawAffiliateLinks.get(i);
                         System.out.println("🔗 -> Đang gõ link " + (i + 1) + ": " + singleLink);
  
-                        // Sử dụng phương pháp chia nhỏ và ngắt Telex tự động để gõ link chính xác trên mọi bàn phím (không bị lỗi ũ, â, ô...)
-                        ADBCommand.typeTextWithoutTelex(deviceId, singleLink);
+                        // Sử dụng ADBKeyboard gửi qua Base64 để tránh hoàn toàn các lỗi Telex và gõ cực nhanh
+                        ADBCommand.sendVietnameseText(deviceId, singleLink);
                         Thread.sleep(2000); // Đợi 2 giây để điện thoại hiển thị trọn vẹn tiến trình gõ link
  
                         // Gửi lệnh bấm phím ENTER (KEYCODE_ENTER = 66) để Shopee xác nhận và tự động tạo dòng mới
@@ -423,8 +425,8 @@ public class AutomationWorker implements Runnable {
                         executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);
                     }
 
-                    DatabaseManager.updateVideoStatus(currentPackName, deviceId, "SUCCESS");
-                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Pack Video thành công!");
+                    DatabaseManager.updateVideoStatus(currentVideoName, deviceId, "SUCCESS");
+                    System.out.println("✅ [" + deviceId + "] Hoàn tất xuất bản Video " + currentVideoName + " thành công!");
 
                     System.out.println("🗑️ [" + deviceId + "] Tiến hành xóa video tạm trên điện thoại...");
                     String escapedDeletePath = "'" + remotePath.replace("'", "'\\''") + "'";
@@ -473,6 +475,9 @@ public class AutomationWorker implements Runnable {
 
     public void stopWorker() {
         this.running = false;
+        if (workerThread != null) {
+            workerThread.interrupt();
+        }
         notifyUI("🛑 Đã dừng", true, false);
         new Thread(() -> {
             executeADBCommand("shell", "am", "force-stop", SHOPEE_PACKAGE);

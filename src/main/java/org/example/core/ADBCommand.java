@@ -76,6 +76,7 @@ public class ADBCommand {
      * Kích hoạt bộ gõ ADBKeyboard làm bàn phím chính thức
      */
     public static void enableADBKeyboard(String deviceId) {
+        executeADB(deviceId, "shell", "ime", "enable", "com.android.adbkeyboard/.AdbIME");
         executeADB(deviceId, "shell", "ime", "set", "com.android.adbkeyboard/.AdbIME");
     }
 

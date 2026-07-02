@@ -286,7 +286,7 @@ public class AutomationWorker implements Runnable {
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Bấm nút [+]", false, true);
                     executeADBCommand("shell", "input", "tap", "660", "100");
-                    Thread.sleep(4000);
+                    Thread.sleep(3000);
 
                     if (!running) break;
                     notifyUI("▶️ Vòng " + currentLoop + ": Mở Thư viện", false, true);
